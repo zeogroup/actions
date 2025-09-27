@@ -34,24 +34,30 @@ jobs:
         env:
           REMOTE_HOST: ${{ inputs.remote_host }}
           TARGET_DIR: ${{ inputs.target_dir }}
-          SCRIPT: ${{ inputs.script_to_run }}
-          ENV_VARS: ${{ inputs.env_vars }}
           REMOTE_USER: ubuntu
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
           BRANCH: ${{ github.ref_name }}
         run: |
-          set -euo pipefail
+          set -eo pipefail
+
+          SCRIPT=${{ inputs.script_to_run }}
+          ENV_VARS=${{ inputs.env_vars }}
+          SCRIPT_B64=$(echo -n "$SCRIPT" | base64 -w 0 | tr -d '\n')
+          ENV_VARS_B64=$(echo -n "$ENV_VARS" | base64 -w 0 | tr -d '\n')
           ssh-keyscan -H "${REMOTE_HOST}" 2>/dev/null >> ~/.ssh/known_hosts
 
           ssh "${REMOTE_USER}@${REMOTE_HOST}" \
-            bash -s -- "${TARGET_DIR}" "${REPO_URL}" "${BRANCH}" "${ENV_VARS}" "${SCRIPT}" \
+            bash -s -- "${TARGET_DIR}" "${REPO_URL}" "${BRANCH}" "${ENV_VARS_B64}" "${SCRIPT_B64}" \
             <<'END'
           set -euo pipefail
           TARGET_DIR=$1
           REPO_URL=$2
           BRANCH=$3
-          ENV_VARS_BLOCK=$4   # KEY=value\nOTHER=val
-          SCRIPT=$5
+          ENV_VARS_B64=$4
+          SCRIPT_B64=$5
+
+          ENV_VARS_BLOCK=$(echo "$ENV_VARS_B64" | base64 -d)
+          SCRIPT=$(echo "$SCRIPT_B64" | base64 -d)
 
           # ---- authenticate repo URL once
           GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
@@ -60,12 +66,17 @@ jobs:
           # ---- git fetch / checkout (unchanged)
           if [[ -d "${TARGET_DIR}/.git" ]]; then
             cd "${TARGET_DIR}"
+
+            git stash push -m "ci-pre-deploy $(date +%Y%m%d-%H%M%S)"
+
             git remote | grep -q '^origin$' && git remote remove origin || true
-            git remote add origin "${REPO_WITH_TOKEN}"
-            git fetch origin "${BRANCH}:${BRANCH}" --update-head-ok
-            git stash push -m "ci-pre-run $(date +%Y%m%d-%H%M%S)" || true
-            git checkout "${BRANCH}"
-            git reset --hard "origin/${BRANCH}"
+            git remote add origin "$REPO_WITH_TOKEN"
+
+            git fetch origin "$BRANCH"
+
+            git checkout "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+
           else
             mkdir -p "${TARGET_DIR}"
             git clone --depth 1 --branch "${BRANCH}" "${REPO_WITH_TOKEN}" "${TARGET_DIR}"
