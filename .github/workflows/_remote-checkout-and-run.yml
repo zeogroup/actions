@@ -1,0 +1,85 @@
+name: Re-usable remote checkout & run
+
+on:
+  workflow_call:
+    inputs:
+      runner_label:
+        required: false
+        type: string
+        default: ubuntu-latest
+      remote_host:
+        required: true
+        type: string
+      target_dir:
+        required: true
+        type: string
+      script_to_run:
+        required: true
+        type: string
+        description: >
+          Shell snippet or path to executable (inside TARGET_DIR) executed after git checkout.
+      env_vars:
+        required: false
+        type: string
+        default: ''
+        description: >
+          Multiline string:  KEY=value\nOTHER_KEY=other_value
+          These variables are exported on the remote host before your script runs.
+
+jobs:
+  deploy:
+    runs-on: ${{ inputs.runner_label }}
+    steps:
+      - name: Checkout repo on remote & run user script
+        env:
+          REMOTE_HOST: ${{ inputs.remote_host }}
+          TARGET_DIR:  ${{ inputs.target_dir }}
+          SCRIPT:      ${{ inputs.script_to_run }}
+          ENV_VARS:    ${{ inputs.env_vars }}
+          REMOTE_USER: ubuntu
+          REPO_URL:    ${{ github.server_url }}/${{ github.repository }}.git
+          BRANCH:      ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ssh-keyscan -H "${REMOTE_HOST}" 2>/dev/null >> ~/.ssh/known_hosts
+
+          ssh "${REMOTE_USER}@${REMOTE_HOST}" \
+            bash -s -- "${TARGET_DIR}" "${REPO_URL}" "${BRANCH}" "${ENV_VARS}" "${SCRIPT}" \
+            <<'END'
+          set -euo pipefail
+          TARGET_DIR=$1
+          REPO_URL=$2
+          BRANCH=$3
+          ENV_VARS_BLOCK=$4   # KEY=value\nOTHER=val
+          SCRIPT=$5
+
+          # ---- authenticate repo URL once
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          REPO_WITH_TOKEN="https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}"
+
+          # ---- git fetch / checkout (unchanged)
+          if [[ -d "${TARGET_DIR}/.git" ]]; then
+            cd "${TARGET_DIR}"
+            git remote | grep -q '^origin$' && git remote remove origin || true
+            git remote add origin "${REPO_WITH_TOKEN}"
+            git fetch origin "${BRANCH}:${BRANCH}" --update-head-ok
+            git stash push -m "ci-pre-run $(date +%Y%m%d-%H%M%S)" || true
+            git checkout "${BRANCH}"
+            git reset --hard "origin/${BRANCH}"
+          else
+            mkdir -p "${TARGET_DIR}"
+            git clone --depth 1 --branch "${BRANCH}" "${REPO_WITH_TOKEN}" "${TARGET_DIR}"
+            cd "${TARGET_DIR}"
+          fi
+          git remote remove origin
+
+          # ---- inject arbitrary env vars
+          if [[ -n "${ENV_VARS_BLOCK}" ]]; then
+            # shellcheck disable=SC2046
+            export $(echo "${ENV_VARS_BLOCK}" | xargs)
+          fi
+
+          # ---- run whatever the caller provided
+          echo ">>> Running user script:"
+          eval "${SCRIPT}"
+          END
