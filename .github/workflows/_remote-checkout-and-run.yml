@@ -21,7 +21,7 @@ on:
       env_vars:
         required: false
         type: string
-        default: ''
+        default: ""
         description: >
           Multiline string:  KEY=value\nOTHER_KEY=other_value
           These variables are exported on the remote host before your script runs.
@@ -33,12 +33,12 @@ jobs:
       - name: Checkout repo on remote & run user script
         env:
           REMOTE_HOST: ${{ inputs.remote_host }}
-          TARGET_DIR:  ${{ inputs.target_dir }}
-          SCRIPT:      ${{ inputs.script_to_run }}
-          ENV_VARS:    ${{ inputs.env_vars }}
+          TARGET_DIR: ${{ inputs.target_dir }}
+          SCRIPT: ${{ inputs.script_to_run }}
+          ENV_VARS: ${{ inputs.env_vars }}
           REMOTE_USER: ubuntu
-          REPO_URL:    ${{ github.server_url }}/${{ github.repository }}.git
-          BRANCH:      ${{ github.ref_name }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           ssh-keyscan -H "${REMOTE_HOST}" 2>/dev/null >> ~/.ssh/known_hosts
