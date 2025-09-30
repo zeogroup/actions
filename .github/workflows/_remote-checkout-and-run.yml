@@ -40,8 +40,8 @@ jobs:
         run: |
           set -eo pipefail
 
-          SCRIPT=${{ inputs.script_to_run }}
-          ENV_VARS=${{ inputs.env_vars }}
+          SCRIPT="${{ inputs.script_to_run }}"
+          ENV_VARS="${{ inputs.env_vars }}"
           SCRIPT_B64=$(echo -n "$SCRIPT" | base64 -w 0 | tr -d '\n')
           ENV_VARS_B64=$(echo -n "$ENV_VARS" | base64 -w 0 | tr -d '\n')
           ssh-keyscan -H "${REMOTE_HOST}" 2>/dev/null >> ~/.ssh/known_hosts
@@ -56,7 +56,7 @@ jobs:
           SCRIPT_B64=$4
           ENV_VARS_B64=$5
 
-          ENV_VARS_BLOCK=$(echo "$ENV_VARS_B64" | base64 -d)
+          ENV_VARS_BLOCK="$(echo $ENV_VARS_B64 | base64 -d)"
           SCRIPT="$(echo $SCRIPT_B64 | base64 -d)"
 
           # ---- authenticate repo URL once
