@@ -57,7 +57,7 @@ jobs:
           ENV_VARS_B64=$5
 
           ENV_VARS_BLOCK=$(echo "$ENV_VARS_B64" | base64 -d)
-          SCRIPT=$(echo "$SCRIPT_B64" | base64 -d)
+          SCRIPT="$(echo $SCRIPT_B64 | base64 -d)"
 
           # ---- authenticate repo URL once
           GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
